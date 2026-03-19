@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bluefy → XIAO テキスト/ファイル送信</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111827;
+      --panel: #1f2937;
+      --panel2: #0f172a;
+      --text: #f3f4f6;
+      --muted: #9ca3af;
+      --accent: #22c55e;
+      --accent2: #3b82f6;
+      --danger: #ef4444;
+      --border: #374151;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #111827, #0b1220);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      padding: 16px;
+    }
+    .wrap {
+      max-width: 860px;
+      margin: 0 auto;
+      display: grid;
+      gap: 14px;
+    }
+    .card {
+      background: rgba(31,41,55,0.92);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+    }
+    h1, h2, h3 { margin: 0 0 12px; }
+    p { margin: 0 0 10px; color: var(--muted); line-height: 1.6; }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    button, input[type="file"]::file-selector-button {
+      appearance: none;
+      border: 0;
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-weight: 700;
+      cursor: pointer;
+      background: #334155;
+      color: white;
+      transition: transform 0.06s ease, opacity 0.2s ease;
+    }
+    button:active, input[type="file"]::file-selector-button:active {
+      transform: scale(0.98);
+    }
+    button.primary { background: var(--accent2); }
+    button.good { background: var(--accent); color: #062b12; }
+    button.danger { background: var(--danger); }
+    button.ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    textarea, input[type="text"], input[type="number"] {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--panel2);
+      color: var(--text);
+      padding: 12px;
+      font: inherit;
+    }
+    textarea {
+      min-height: 260px;
+      resize: vertical;
+    }
+    .menu {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .menu button {
+      min-height: 58px;
+      font-size: 16px;
+    }
+    .hidden { display: none; }
+    .status {
+      background: #0b1220;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      min-height: 52px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--text);
+      background: #111827;
+      font-size: 14px;
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .small { font-size: 13px; color: var(--muted); }
+    .progress {
+      width: 100%;
+      height: 14px;
+      border-radius: 999px;
+      background: #0b1220;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #22c55e);
+      transition: width 0.12s ease;
+    }
+    label.checkbox {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Bluefy → XIAO 送信</h1>
+      <p>
+        iPhone/Bluefy から BLE で XIAO に送信し、XIAO が USB キーボードとして PC に文字を打ち込みます。<br>
+        主用途は <span class="mono">.ps1 / .bat / .txt / .json / .csv</span> などのテキスト投入です。
+      </p>
+      <div class="row" style="justify-content: space-between;">
+        <div class="row">
+          <button id="connectBtn" class="primary">XIAOに接続</button>
+          <button id="disconnectBtn" class="ghost">切断</button>
+        </div>
+        <div class="row">
+          <span id="connPill" class="pill">未接続</span>
+          <span id="modePill" class="pill">モード未選択</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>最初の画面</h2>
+      <div class="menu">
+        <button id="showTextBtn" class="good">テキストを送る</button>
+        <button id="showFileBtn" class="good">ファイルを送る</button>
+      </div>
+    </div>
+
+    <div id="textPanel" class="card hidden">
+      <h2>テキストを送る</h2>
+      <p>ここに貼った内容を、そのまま PC の現在フォーカス中の場所へキーボード入力します。</p>
+      <textarea id="textInput" placeholder="ここに PowerShell コードやテキストを貼り付けてください"></textarea>
+      <div class="row">
+        <label class="checkbox"><input type="checkbox" id="textFinalEnter"> 末尾に Enter を追加</label>
+      </div>
+      <div class="row">
+        <button id="sendTextBtn" class="primary">テキスト送信開始</button>
+        <button id="clearTextBtn" class="ghost">クリア</button>
+      </div>
+    </div>
+
+    <div id="filePanel" class="card hidden">
+      <h2>ファイルを送る</h2>
+      <p>この実装は「テキスト系ファイルの内容」を送信します。バイナリファイルそのものの転送ではありません。</p>
+      <input id="fileInput" type="file" accept=".txt,.ps1,.bat,.cmd,.csv,.json,.xml,.yaml,.yml,.md,.js,.ts,.py,.ini,.reg,.log,.sql,.html,.css" />
+      <div class="row">
+        <label class="checkbox"><input type="checkbox" id="fileFinalEnter"> 末尾に Enter を追加</label>
+      </div>
+      <div class="row">
+        <button id="sendFileBtn" class="primary">ファイル送信開始</button>
+      </div>
+      <div id="fileInfo" class="small"></div>
+    </div>
+
+    <div class="card">
+      <h3>進行状況</h3>
+      <div class="progress"><div id="bar" class="bar"></div></div>
+      <div id="progressText" class="small" style="margin-top:8px;">待機中</div>
+    </div>
+
+    <div class="card">
+      <h3>ログ</h3>
+      <div id="statusBox" class="status mono">待機中</div>
+    </div>
+  </div>
+
+  <script>
+    const NUS_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+    const NUS_RX_CHAR = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // browser -> XIAO
+    const NUS_TX_CHAR = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // XIAO -> browser notify
+
+    const textPanel = document.getElementById('textPanel');
+    const filePanel = document.getElementById('filePanel');
+    const textInput = document.getElementById('textInput');
+    const fileInput = document.getElementById('fileInput');
+    const fileInfo = document.getElementById('fileInfo');
+    const statusBox = document.getElementById('statusBox');
+    const connPill = document.getElementById('connPill');
+    const modePill = document.getElementById('modePill');
+    const bar = document.getElementById('bar');
+    const progressText = document.getElementById('progressText');
+
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    let device = null;
+    let server = null;
+    let service = null;
+    let rxChar = null;
+    let txChar = null;
+    let notifyBuffer = '';
+    let pendingWaiter = null;
+    let isBusy = false;
+
+    document.getElementById('showTextBtn').addEventListener('click', () => {
+      textPanel.classList.remove('hidden');
+      filePanel.classList.add('hidden');
+      modePill.textContent = 'テキストモード';
+    });
+
+    document.getElementById('showFileBtn').addEventListener('click', () => {
+      filePanel.classList.remove('hidden');
+      textPanel.classList.add('hidden');
+      modePill.textContent = 'ファイルモード';
+    });
+
+    document.getElementById('clearTextBtn').addEventListener('click', () => {
+      textInput.value = '';
+    });
+
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) {
+        fileInfo.textContent = '';
+        return;
+      }
+      fileInfo.textContent = `選択中: ${file.name} / ${file.size.toLocaleString()} bytes`;
+    });
+
+    document.getElementById('connectBtn').addEventListener('click', connectBle);
+    document.getElementById('disconnectBtn').addEventListener('click', disconnectBle);
+    document.getElementById('sendTextBtn').addEventListener('click', sendTextFlow);
+    document.getElementById('sendFileBtn').addEventListener('click', sendFileFlow);
+
+    function log(message) {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      statusBox.textContent += `\n[${hh}:${mm}:${ss}] ${message}`;
+      statusBox.scrollTop = statusBox.scrollHeight;
+    }
+
+    function setProgress(current, total, label = '') {
+      const percent = total > 0 ? (current / total) * 100 : 0;
+      bar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+      progressText.textContent = label || `${current} / ${total}`;
+    }
+
+    function resetProgress(label = '待機中') {
+      setProgress(0, 1, label);
+      bar.style.width = '0%';
+    }
+
+    function sanitizeText(text, addFinalEnter) {
+      let normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+      if (addFinalEnter && !normalized.endsWith('\n')) normalized += '\n';
+      return normalized;
+    }
+
+    function bytesToBase64(bytes) {
+      let binary = '';
+      const step = 0x8000;
+      for (let i = 0; i < bytes.length; i += step) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + step));
+      }
+      return btoa(binary);
+    }
+
+    async function connectBle() {
+      try {
+        if (!navigator.bluetooth) {
+          throw new Error('この環境では Web Bluetooth が使えません。Bluefy で開いてください。');
+        }
+
+        log('XIAOを検索します…');
+        device = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [NUS_SERVICE] }],
+          optionalServices: [NUS_SERVICE]
+        });
+
+        device.addEventListener('gattserverdisconnected', onDisconnected);
+
+        server = await device.gatt.connect();
+        service = await server.getPrimaryService(NUS_SERVICE);
+        rxChar = await service.getCharacteristic(NUS_RX_CHAR);
+        txChar = await service.getCharacteristic(NUS_TX_CHAR);
+
+        await txChar.startNotifications();
+        txChar.addEventListener('characteristicvaluechanged', handleNotify);
+
+        connPill.textContent = `接続中: ${device.name || 'XIAO'}`;
+        log('BLE接続完了');
+
+        await sendCommand('@HELLO', 'READY');
+        log('XIAOとのハンドシェイク完了');
+      } catch (err) {
+        log(`接続失敗: ${err.message}`);
+      }
+    }
+
+    function onDisconnected() {
+      connPill.textContent = '未接続';
+      rxChar = null;
+      txChar = null;
+      server = null;
+      service = null;
+      log('切断されました');
+    }
+
+    async function disconnectBle() {
+      try {
+        if (device && device.gatt && device.gatt.connected) {
+          device.gatt.disconnect();
+        }
+      } catch (err) {
+        log(`切断エラー: ${err.message}`);
+      }
+    }
+
+    function handleNotify(event) {
+      const chunk = decoder.decode(event.target.value);
+      notifyBuffer += chunk;
+
+      while (notifyBuffer.includes('\n')) {
+        const idx = notifyBuffer.indexOf('\n');
+        const line = notifyBuffer.slice(0, idx).trim();
+        notifyBuffer = notifyBuffer.slice(idx + 1);
+        if (!line) continue;
+
+        log(`XIAO: ${line}`);
+
+        if (pendingWaiter) {
+          const waiter = pendingWaiter;
+          pendingWaiter = null;
+          waiter.resolve(line);
+        }
+      }
+    }
+
+    function waitForReply(timeoutMs = 5000) {
+      if (pendingWaiter) {
+        throw new Error('前の応答待ちが残っています');
+      }
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          pendingWaiter = null;
+          reject(new Error('XIAOからの応答がタイムアウトしました'));
+        }, timeoutMs);
+
+        pendingWaiter = {
+          resolve: (line) => {
+            clearTimeout(timer);
+            resolve(line);
+          }
+        };
+      });
+    }
+
+    async function writeLine(line) {
+      if (!rxChar) throw new Error('XIAOに接続されていません');
+      const data = encoder.encode(line + '\n');
+      await rxChar.writeValue(data);
+    }
+
+    async function sendCommand(line, expectPrefix, timeoutMs = 5000) {
+      const replyPromise = waitForReply(timeoutMs);
+      await writeLine(line);
+      const reply = await replyPromise;
+      if (!reply.startsWith(expectPrefix)) {
+        throw new Error(`想定外の応答: ${reply}`);
+      }
+      return reply;
+    }
+
+    async function sendPayloadAsChunks(text, beginCommand) {
+      const bytes = encoder.encode(text);
+      const rawChunkSize = 72; // base64化しても余裕を持って1行へ収まるサイズ
+      const total = Math.ceil(bytes.length / rawChunkSize) || 1;
+
+      await sendCommand(beginCommand, 'OK');
+      log(`送信開始: ${bytes.length} bytes / ${total} chunk`);
+
+      for (let i = 0; i < bytes.length; i += rawChunkSize) {
+        const chunk = bytes.subarray(i, i + rawChunkSize);
+        const base64 = bytesToBase64(chunk);
+        const reply = await sendCommand(`@DATA:${base64}`, 'ACK', 8000);
+        setProgress(Math.min(total, Math.floor(i / rawChunkSize) + 1), total,
+          `${Math.floor(i / rawChunkSize) + 1} / ${total} chunk 送信中`);
+        if (!reply.startsWith('ACK')) {
+          throw new Error(`ACK失敗: ${reply}`);
+        }
+      }
+
+      const done = await sendCommand('@END', 'DONE', 8000);
+      setProgress(total, total, '送信完了');
+      return done;
+    }
+
+    async function sendTextFlow() {
+      if (isBusy) return;
+      try {
+        isBusy = true;
+        const content = sanitizeText(
+          textInput.value,
+          document.getElementById('textFinalEnter').checked
+        );
+
+        if (!content) {
+          throw new Error('送るテキストが空です');
+        }
+
+        resetProgress('テキスト送信準備中');
+        const done = await sendPayloadAsChunks(content, '@BEGIN:TEXT');
+        log(`テキスト送信完了: ${done}`);
+      } catch (err) {
+        log(`テキスト送信失敗: ${err.message}`);
+      } finally {
+        isBusy = false;
+      }
+    }
+
+    async function sendFileFlow() {
+      if (isBusy) return;
+      try {
+        isBusy = true;
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) {
+          throw new Error('ファイルが選択されていません');
+        }
+
+        const text = await file.text();
+        const content = sanitizeText(
+          text,
+          document.getElementById('fileFinalEnter').checked
+        );
+
+        resetProgress(`ファイル読込中: ${file.name}`);
+        const done = await sendPayloadAsChunks(content, '@BEGIN:FILE');
+        log(`ファイル送信完了 (${file.name}): ${done}`);
+      } catch (err) {
+        log(`ファイル送信失敗: ${err.message}`);
+      } finally {
+        isBusy = false;
+      }
+    }
+
+    statusBox.textContent = '待機中';
+  </script>
+</body>
+</html>
