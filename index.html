@@ -315,13 +315,31 @@
         rxChar = await service.getCharacteristic(NUS_RX_CHAR);
         txChar = await service.getCharacteristic(NUS_TX_CHAR);
 
-        await txChar.startNotifications();
         txChar.addEventListener('characteristicvaluechanged', handleNotify);
+        await txChar.startNotifications();
+        await sleep(300);
 
         connPill.textContent = `接続中: ${device.name || 'XIAO'}`;
         log('BLE接続完了');
 
-        await sendCommand('@HELLO', 'READY');
+        let helloOk = false;
+        let lastErr = null;
+        for (let i = 0; i < 3; i++) {
+          try {
+            log(`HELLO試行 ${i + 1}/3`);
+            await sendCommand('@HELLO', 'READY', 3500);
+            helloOk = true;
+            break;
+          } catch (e) {
+            lastErr = e;
+            await sleep(350);
+          }
+        }
+
+        if (!helloOk) {
+          throw lastErr || new Error('HELLO失敗');
+        }
+
         log('XIAOとのハンドシェイク完了');
       } catch (err) {
         log(`接続失敗: ${err.message}`);
@@ -345,6 +363,10 @@
       } catch (err) {
         log(`切断エラー: ${err.message}`);
       }
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     function handleNotify(event) {
@@ -389,7 +411,14 @@
     async function writeLine(line) {
       if (!rxChar) throw new Error('XIAOに接続されていません');
       const data = encoder.encode(line + '\n');
-      await rxChar.writeValue(data);
+
+      if (typeof rxChar.writeValueWithResponse === 'function') {
+        await rxChar.writeValueWithResponse(data);
+      } else if (typeof rxChar.writeValue === 'function') {
+        await rxChar.writeValue(data);
+      } else {
+        throw new Error('このブラウザは characteristic write に未対応です');
+      }
     }
 
     async function sendCommand(line, expectPrefix, timeoutMs = 5000) {
@@ -404,7 +433,7 @@
 
     async function sendPayloadAsChunks(text, beginCommand) {
       const bytes = encoder.encode(text);
-      const rawChunkSize = 72; // base64化しても余裕を持って1行へ収まるサイズ
+      const rawChunkSize = 48; // 接続安定性優先でやや小さめ
       const total = Math.ceil(bytes.length / rawChunkSize) || 1;
 
       await sendCommand(beginCommand, 'OK');
